@@ -6,6 +6,9 @@
 
   <title>AMANA HUB</title>
 
+  <!-- Pi Network SDK -->
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -67,6 +70,17 @@
       transform: scale(0.98);
     }
 
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 20px;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
     .footer {
       margin-top: 30px;
       font-size: 14px;
@@ -91,9 +105,11 @@
       🌍 Your Digital Business Hub
     </div>
 
-    <button onclick="continueWithPi()">
+    <button id="piLoginButton" onclick="continueWithPi()">
       Continue with Pi
     </button>
+
+    <div id="status" class="status"></div>
 
     <div class="footer">
       Secure • Simple • Connected
@@ -102,9 +118,117 @@
   </div>
 
   <script>
-    function continueWithPi() {
-      alert("AMANA HUB Pi Login will be connected soon!");
+
+    // Initialize Pi SDK
+    Pi.init({
+      version: "2.0",
+      sandbox: true
+    });
+
+    async function continueWithPi() {
+
+      const button = document.getElementById("piLoginButton");
+      const status = document.getElementById("status");
+
+      button.disabled = true;
+      status.innerText = "Connecting to Pi...";
+
+      try {
+
+        const scopes = ["username", "payments"];
+
+        const authResult = await Pi.authenticate(
+          scopes,
+          onIncompletePaymentFound
+        );
+
+        const accessToken = authResult.accessToken;
+        const username = authResult.user.username;
+
+        // Send access token to AMANA HUB backend
+        const response = await fetch(
+          "https://amana-hub.onrender.com/api/auth/verify",
+          {
+            method: "GET",
+            headers: {
+              "Authorization": "Bearer " + accessToken
+            }
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Pi user verification failed"
+          );
+        }
+
+        status.innerText =
+          "Welcome, @" + username + " 🎉";
+
+        button.innerText = "Pi Connected ✓";
+
+        console.log("Pi user:", authResult.user);
+        console.log("Backend verification:", data);
+
+      } catch (error) {
+
+        console.error(error);
+
+        status.innerText =
+          "Pi Login failed: " + error.message;
+
+        button.disabled = false;
+      }
     }
+
+    // Handle incomplete Pi payment
+    function onIncompletePaymentFound(payment) {
+
+      console.log(
+        "Incomplete payment found:",
+        payment
+      );
+
+      if (
+        payment &&
+        payment.identifier &&
+        payment.transaction &&
+        payment.transaction.txid
+      ) {
+
+        fetch(
+          "https://amana-hub.onrender.com/api/payments/complete",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              paymentId: payment.identifier,
+              txid: payment.transaction.txid
+            })
+          }
+        )
+        .then(response => response.json())
+        .then(data => {
+          console.log(
+            "Incomplete payment completed:",
+            data
+          );
+        })
+        .catch(error => {
+          console.error(
+            "Payment completion error:",
+            error
+          );
+        });
+      }
+    }
+
   </script>
 
 </body>
