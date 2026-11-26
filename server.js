@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const { Pool } = require("pg");
 
 const app = express();
 
@@ -10,6 +11,15 @@ const PORT = process.env.PORT || 3000;
 const PI_API_BASE = "https://api.minepi.com/v2";
 const PI_API_KEY = process.env.PI_API_KEY;
 
+// NEON DATABASE CONNECTION
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  max: 5
+});
+
 // Health check
 app.get("/", (req, res) => {
   res.json({
@@ -17,6 +27,27 @@ app.get("/", (req, res) => {
     status: "Backend is running",
     message: "Connect • Trade • Earn"
   });
+});
+
+// Test database connection
+app.get("/api/db/status", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT NOW() AS database_time"
+    );
+
+    res.json({
+      app: "AMANA HUB",
+      database: "Connected",
+      time: result.rows[0].database_time
+    });
+  } catch (error) {
+    console.error("Database connection error:", error.message);
+
+    res.status(500).json({
+      database: "Connection failed"
+    });
+  }
 });
 
 // Verify Pi user
@@ -45,7 +76,6 @@ app.get("/api/auth/verify", async (req, res) => {
     });
   }
 });
-
 // Approve Pi payment
 app.post("/api/payments/approve", async (req, res) => {
   try {
@@ -114,16 +144,4 @@ app.post("/api/payments/complete", async (req, res) => {
       }
     );
 
-    const data = await response.json();
-
-    res.status(response.status).json(data);
-  } catch (error) {
-    res.status(500).json({
-      error: error.message
-    });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`AMANA HUB backend running on port ${PORT}`);
-});
+    const data = await response.json
