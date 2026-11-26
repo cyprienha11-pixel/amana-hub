@@ -144,4 +144,16 @@ app.post("/api/payments/complete", async (req, res) => {
       }
     );
 
-    const data = await response.json
+    const data = await response.json();
+
+    res.status(response.status).json(data);
+  } catch (error) {
+    res.status(500).json({
+      error: error.message
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`AMANA HUB backend running on port ${PORT}`);
+});
