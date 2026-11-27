@@ -523,6 +523,54 @@ app.get("/api/admin/agents/sales", async (req, res) => {
 
   }
 });
+// APPROVE OR REJECT AGENT SALE - ADMIN ONLY
+app.patch("/api/admin/agents/sales/:id/status", async (req, res) => {
+  try {
+
+    const isAdmin = await verifyAdmin(req, res);
+    if (!isAdmin) return;
+
+    const saleId = req.params.id;
+    const { status } = req.body;
+
+    if (!["VERIFIED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        error: "Status must be VERIFIED or REJECTED"
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE agent_sales
+       SET status = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       AND status = 'PENDING'
+       RETURNING id, status, updated_at`,
+      [status, saleId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Pending agent sale not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Agent sale status updated successfully",
+      sale: result.rows[0]
+    });
+
+  } catch (error) {
+
+    console.error("Agent sale status update error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to update agent sale status"
+    });
+
+  }
+});
 app.listen(PORT, () => {
   console.log(`AMANA HUB backend running on port ${PORT}`);
 });
