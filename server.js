@@ -75,6 +75,89 @@ app.get("/api/auth/verify", async (req, res) => {
     });
   }
 });
+// VERIFY AMANA HUB ADMIN
+async function verifyAdmin(req, res) {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      res.status(401).json({
+        error: "Pi authentication required"
+      });
+      return false;
+    }
+
+    const piResponse = await fetch(`${PI_API_BASE}/me`, {
+      headers: {
+        Authorization: authHeader
+      }
+    });
+
+    if (!piResponse.ok) {
+      res.status(401).json({
+        error: "Invalid Pi authentication"
+      });
+      return false;
+    }
+
+    const piUser = await piResponse.json();
+
+    if (
+      !process.env.ADMIN_PI_UID ||
+      piUser.uid !== process.env.ADMIN_PI_UID
+    ) {
+      res.status(403).json({
+        error: "Admin access denied"
+      });
+      return false;
+    }
+
+    return true;
+
+  } catch (error) {
+    res.status(500).json({
+      error: "Admin verification failed"
+    });
+    return false;
+  }
+}
+
+// GET AGENT APPLICATIONS - ADMIN ONLY
+app.get("/api/admin/agents/applications", async (req, res) => {
+  try {
+    const isAdmin = await verifyAdmin(req, res);
+
+    if (!isAdmin) return;
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        pi_username,
+        name,
+        phone,
+        location,
+        product,
+        experience,
+        status,
+        application_date,
+        created_at
+      FROM agent_applications
+      ORDER BY created_at DESC`
+    );
+
+    res.json({
+      success: true,
+      applications: result.rows
+    });
+
+  } catch (error) {
+    console.error("Admin applications error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to retrieve applications"
+    });
+  }
+});
 
 // SUBMIT AGENT APPLICATION
 app.post("/api/agents/applications", async (req, res) => {
