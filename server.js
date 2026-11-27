@@ -248,7 +248,52 @@ app.post("/api/agents/applications", async (req, res) => {
       error: "Failed to submit agent application"
     });
   }
-});    
+});
+// APPROVE OR REJECT AGENT APPLICATION - ADMIN ONLY
+app.patch("/api/admin/agents/applications/:id/status", async (req, res) => {
+  try {
+    const isAdmin = await verifyAdmin(req, res);
+
+    if (!isAdmin) return;
+
+    const applicationId = req.params.id;
+    const { status } = req.body;
+
+    if (!["APPROVED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        error: "Status must be APPROVED or REJECTED"
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE agent_applications
+       SET status = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, status, updated_at`,
+      [status, applicationId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Agent application not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Agent application status updated successfully",
+      application: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Agent status update error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to update agent application status"
+    });
+  }
+});
 // Approve Pi payment
 app.post("/api/payments/approve", async (req, res) => {
   try {
