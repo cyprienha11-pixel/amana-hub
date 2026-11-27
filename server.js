@@ -372,6 +372,157 @@ app.post("/api/payments/complete", async (req, res) => {
   }
 });
 
+// SUBMIT AGENT SALE - SAVE TO NEON
+app.post("/api/agents/sales", async (req, res) => {
+  try {
+    // Verify Pi user
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        error: "Pi authentication required"
+      });
+    }
+
+    const piResponse = await fetch(`${PI_API_BASE}/me`, {
+      headers: {
+        Authorization: authHeader
+      }
+    });
+
+    if (!piResponse.ok) {
+      return res.status(401).json({
+        error: "Invalid Pi authentication"
+      });
+    }
+
+    const piUser = await piResponse.json();
+
+    if (!piUser.uid || !piUser.username) {
+      return res.status(401).json({
+        error: "Pi user verification failed"
+      });
+    }
+
+    // Check approved agent
+    const agent = await pool.query(
+      `SELECT id
+       FROM agent_applications
+       WHERE pi_user_id = $1
+       AND status = 'APPROVED'
+       LIMIT 1`,
+      [piUser.uid]
+    );
+
+    if (agent.rowCount === 0) {
+      return res.status(403).json({
+        error: "Only approved agents can submit sales"
+      });
+    }
+
+    // Validate product and quantity
+    const { productId, quantity } = req.body;
+
+    const products = {
+      monti7: "MONTI 7-in-1",
+      composite: "MONTI Composite Flour",
+      super: "MONTI Super 5K"
+    };
+
+    const productName = products[productId];
+    const kg = Number(quantity);
+
+    if (!productName || !Number.isFinite(kg) || kg <= 0) {
+      return res.status(400).json({
+        error: "Invalid product or quantity"
+      });
+    }
+
+    // Calculate commission on server
+    const commission = kg * 300;
+
+    const saleId =
+      "SALE-" + Date.now() + "-" +
+      Math.floor(Math.random() * 100000);
+
+    // Save sale to Neon
+    const result = await pool.query(
+      `INSERT INTO agent_sales
+      (
+        id,
+        pi_user_id,
+        pi_username,
+        product_id,
+        product_name,
+        quantity,
+        sales_value,
+        commission,
+        status
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,0,$7,'PENDING')
+      RETURNING *`,
+      [
+        saleId,
+        piUser.uid,
+        piUser.username,
+        productId,
+        productName,
+        kg,
+        commission
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Agent sale submitted successfully",
+      sale: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Agent sale submission error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to submit agent sale"
+    });
+  }
+});
+// GET ALL AGENT SALES - ADMIN ONLY
+app.get("/api/admin/agents/sales", async (req, res) => {
+  try {
+
+    const authorized = await verifyAdmin(req, res);
+    if (!authorized) return;
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        pi_username,
+        product_id,
+        product_name,
+        quantity,
+        sales_value,
+        commission,
+        status,
+        created_at
+       FROM agent_sales
+       ORDER BY created_at DESC`
+    );
+
+    res.json({
+      success: true,
+      sales: result.rows
+    });
+
+  } catch (error) {
+
+    console.error("Get agent sales error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to load agent sales"
+    });
+
+  }
+});
 app.listen(PORT, () => {
   console.log(`AMANA HUB backend running on port ${PORT}`);
 });
