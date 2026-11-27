@@ -158,6 +158,42 @@ app.get("/api/admin/agents/applications", async (req, res) => {
     });
   }
 });
+// GET AGENT SALES - ADMIN ONLY
+app.get("/api/admin/agents/sales", async (req, res) => {
+  try {
+    const isAdmin = await verifyAdmin(req, res);
+
+    if (!isAdmin) return;
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        pi_user_id,
+        pi_username,
+        product_id,
+        product_name,
+        quantity,
+        sales_value,
+        commission,
+        status,
+        created_at
+      FROM agent_sales
+      ORDER BY created_at DESC`
+    );
+
+    res.json({
+      success: true,
+      sales: result.rows
+    });
+
+  } catch (error) {
+    console.error("Admin sales error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to retrieve agent sales"
+    });
+  }
+});
 
 // SUBMIT AGENT APPLICATION
 app.post("/api/agents/applications", async (req, res) => {
@@ -569,6 +605,66 @@ app.patch("/api/admin/agents/sales/:id/status", async (req, res) => {
       error: "Failed to update agent sale status"
     });
 
+  }
+});
+// GET MY AGENT SALES
+app.get("/api/agents/sales", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        error: "Pi authentication required"
+      });
+    }
+
+    const piResponse = await fetch(`${PI_API_BASE}/me`, {
+      headers: {
+        Authorization: authHeader
+      }
+    });
+
+    if (!piResponse.ok) {
+      return res.status(401).json({
+        error: "Invalid Pi authentication"
+      });
+    }
+
+    const piUser = await piResponse.json();
+
+    if (!piUser.uid) {
+      return res.status(401).json({
+        error: "Pi user verification failed"
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        product_id,
+        product_name,
+        quantity,
+        sales_value,
+        commission,
+        status,
+        created_at
+       FROM agent_sales
+       WHERE pi_user_id = $1
+       ORDER BY created_at DESC`,
+      [piUser.uid]
+    );
+
+    res.json({
+      success: true,
+      sales: result.rows
+    });
+
+  } catch (error) {
+    console.error("Agent sales error:", error.message);
+
+    res.status(500).json({
+      error: "Failed to retrieve agent sales"
+    });
   }
 });
 app.listen(PORT, () => {
